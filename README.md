@@ -1,6 +1,6 @@
 # weewx-sftp
 
-> Copyright 2016-2026 Matthew Wall and contributors. Distributed under the terms of the GPLv3.
+> A community-maintained fork of [matthewwall/weewx-sftp](https://github.com/matthewwall/weewx-sftp) (unmaintained). Copyright 2016-2026 Matthew Wall and contributors. Distributed under the terms of the GPLv3.
 
 Report generator for WeeWX that uploads a local directory tree to a remote host
 over SFTP. It is functionally equivalent to WeeWX's built-in FTP generator, but
