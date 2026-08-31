@@ -27,7 +27,7 @@ implemented by davies-barnard.
 1. Install the extension straight from GitHub:
 
    ```
-   weectl extension install https://github.com/ziti/weewx-sftp/archive/refs/heads/master.zip
+   weectl extension install https://github.com/ziti/weewx-sftp/archive/refs/heads/main.zip
    ```
 
    or from a downloaded release archive:
