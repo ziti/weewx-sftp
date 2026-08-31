@@ -1,76 +1,88 @@
 # weewx-sftp
 
-> Copyright 2016-2020 Matthew Wall, Distributed under terms of the GPLv3
+> Copyright 2016-2026 Matthew Wall and contributors. Distributed under the terms of the GPLv3.
 
-Generator for weewx that uploads data using sftp.  Copy everything from a
-designated local directory to a remote directory, using the sftp protocol.
+Report generator for WeeWX that uploads a local directory tree to a remote host
+over SFTP. It is functionally equivalent to WeeWX's built-in FTP generator, but
+uses the SSH file-transfer protocol.
 
-This generator is intended to be functionally equivalent to the FTP generator
-in weewx, but using a different protocol.
+The SFTP protocol is not the FTPS protocol! FTPS is handled by WeeWX's standard
+FTP generator. This generator speaks SFTP via the
+[Paramiko](https://www.paramiko.org/) SSH library.
 
-The sftp protocol is not the same as the ftps protocol!  The ftps protocol
-is supported by the standard FTP generator in weewx.  This generator uses sftp,
-which requires the pysftp module.
-
-Based on the FTP generator in weewx, with help from the SFTP generator
+Based on the FTP generator in WeeWX, with help from the SFTP generator
 implemented by davies-barnard.
 
-## Pre-requisites
+## Requirements
 
-This extension requires the `pysftp` python module.  It can be installed using
-the system package manager such as `yum` or `apt`, or using `pip`.  Use the
-appropriate installation method for your operating system and configuration!
-For example, if you use `pip` then you can install it like this:
+- WeeWX 5.0 or newer
+- The `paramiko` Python module, installed into the same environment as WeeWX:
 
-```
-sudo pip install pysftp
-```
+  ```
+  pip install paramiko
+  ```
 
 ## Installation
 
-1) Download the generator
+1. Install the extension straight from GitHub:
 
-```
-wget -O weewx-sftp.zip https://github.com/matthewwall/weewx-sftp/archive/master.zip
-```
+   ```
+   weectl extension install https://github.com/ziti/weewx-sftp/archive/refs/heads/master.zip
+   ```
 
-2) Install the generator
+   or from a downloaded release archive:
 
-```
-sudo wee_extension --install weewx-sftp.zip
-```
+   ```
+   weectl extension install weewx-sftp-x.y.zip
+   ```
 
-3) Set the SFTP parameters in the weewx configuration file
+2. Add the SFTP settings to `weewx.conf`:
 
-```
-[StdReport]
-    [[SFTP]]
-        skin = sftp
-        user = username
-        password = password
-        server = host.example.com
-        port = 2222
-        path = /weewx
-```
+   ```
+   [StdReport]
+       [[SFTP]]
+           skin = sftp
+           enable = true
+           user = username
+           password = password
+           server = host.example.com
+           port = 22
+           path = /weewx
+   ```
 
-4) Re-start weewx
+3. Restart WeeWX:
 
-```
-sudo /etc/init.d/weewx start
-```
+   ```
+   sudo systemctl restart weewx
+   ```
 
 ## Options
 
-`user`, `password` - Username and password of the user.  If passord contains a comma or space then enclose it in double quotes.  Required.
+| Option | Description |
+| --- | --- |
+| `user` | Remote username. Required. |
+| `password` | Remote password. If it contains a comma or space, wrap it in double quotes. Omit when using key authentication. |
+| `private_key` | Path to a private key file for key-based authentication. |
+| `private_key_pass` | Passphrase for `private_key`, if it has one. |
+| `server` | Hostname or IP address of the remote host. Required. |
+| `port` | Port on the remote host. Default is `22`. |
+| `path` | Destination directory on the remote host. Required. |
+| `max_tries` | Connection and per-file upload attempts. Default is `3`. |
 
-`private_key` - Specify path to private key file for PKI authentication.
+The local directory comes from the standard WeeWX report options `WEEWX_ROOT`
+and/or `HTML_ROOT`; if unset here they are inherited from `[StdReport]`.
 
-`private_key_pass` - Specify passphrase for private key file, if necessary.
+Host keys are not verified -- unknown keys are accepted automatically, matching
+the original pysftp-based behaviour.
 
-`server` - The hostname or IP address of the remote host.  Required.
- 
-`port` - The port on the remote host.  Default is 22.
+## Development
 
-`path` - The path to the destination directory on the remote host.  Required.
+```
+pip install -r requirements-dev.txt
+ruff check .
+pytest
+```
 
-The local directory is specified using the standard weeWX report options `WEEWX_ROOT` and/or `HTML_ROOT`.  If not specified, they are inherited from the values defined in `StdReport`.
+Tag a commit `vX.Y` -- matching `VERSION` in `bin/user/sftp.py`, `version` in
+`install.py`, and the top line of `changelog` -- and the release workflow builds
+`weewx-sftp-X.Y.zip` and publishes it to GitHub Releases.

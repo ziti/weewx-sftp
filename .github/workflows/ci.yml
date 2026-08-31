@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: ruff
+        run: ruff check --output-format=github .
+      - name: byte-compile
+        run: python -m compileall -q bin install.py
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements-dev.txt
+      - name: pytest
+        run: pytest -q
+
+  integration:
+    # Import the extension against a real WeeWX + paramiko, no stubs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install weewx paramiko
+      - name: import check
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "bin")
+          import weewx, weewx.reportengine
+          import user.sftp as s
+          assert issubclass(s.SFTPGenerator, weewx.reportengine.ReportGenerator)
+          assert isinstance(s.VERSION, str) and s.VERSION
+          print("OK: weewx", weewx.__version__, "sftp", s.VERSION)
+          PY

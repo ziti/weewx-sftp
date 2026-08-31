@@ -1,0 +1,25 @@
+# Tooling config only -- this repo is a WeeWX extension installed via
+# `weectl extension install`, not a pip package.
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = ["skins"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "UP031",  # keep matthewwall's printf-style logging/format strings
+    "UP004",  # `class Foo(object)` kept to match upstream style
+    "UP008",  # `super(Cls, self)` kept in install.py to match upstream style
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["user"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

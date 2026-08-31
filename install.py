@@ -4,13 +4,14 @@
 
 from weecfg.extension import ExtensionInstaller
 
+
 def loader():
     return SFTPInstaller()
 
 class SFTPInstaller(ExtensionInstaller):
     def __init__(self):
         super(SFTPInstaller, self).__init__(
-            version="0.7",
+            version="0.8",
             name='sftp',
             description='Upload data using the sftp protocol',
             author="Matthew Wall",

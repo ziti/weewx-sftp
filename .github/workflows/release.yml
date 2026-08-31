@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Check version is consistent
+        run: |
+          set -e
+          fail=0
+          grep -q "^VERSION = \"${VERSION}\"$" bin/user/sftp.py || { echo "::error::bin/user/sftp.py VERSION != ${VERSION}"; fail=1; }
+          grep -q "version=\"${VERSION}\"" install.py           || { echo "::error::install.py version != ${VERSION}"; fail=1; }
+          head -n1 changelog | grep -q "^${VERSION} "           || { echo "::error::changelog top entry is not ${VERSION}"; fail=1; }
+          exit $fail
+
+      - name: Build extension archive
+        run: |
+          pkg="weewx-sftp-${VERSION}"
+          mkdir -p "dist/${pkg}"
+          cp -r bin install.py skins changelog license README.md "dist/${pkg}/"
+          (cd dist && zip -r -q "${pkg}.zip" "${pkg}")
+          ls -l dist
+
+      - name: Extract release notes
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^"v" " { grab=1; next }
+            grab && /^[0-9]+\.[0-9]+ / { exit }
+            grab { print }
+          ' changelog | sed '/^[[:space:]]*$/d' > notes.md
+          echo "--- notes.md ---"; cat notes.md
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/weewx-sftp-${VERSION}.zip" \
+            --title "weewx-sftp ${VERSION}" \
+            --notes-file notes.md

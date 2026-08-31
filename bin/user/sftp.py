@@ -9,57 +9,38 @@ in weewx, but using a different protocol.
 
 The sftp protocol is not the same as the ftps protocol!  The ftps protocol
 is supported by the standard FTP generator in weewx.  This generator uses sftp,
-which requires the pysftp module.
+which uses the Paramiko SSH/SFTP library.
 
 Based on the FTP generator in weewx, with help from the SFTP generator
 implemented by davies-barnard.
 """
 
+import logging
 import os
+import pickle
+import stat
 import time
-
-try:
-    from six.moves import cPickle
-except ImportError:
-    import cPickle
 
 import weewx
 import weewx.reportengine
 from weeutil.weeutil import to_bool
 
-try:
-    import weeutil.logger
-    import logging
-    log = logging.getLogger(__name__)
-
-    def logdbg(msg, label=None):
-        if label is None:
-            label = 'sftp'
-        log.debug("%s: %s" % (label, msg))
-    def loginf(msg, label=None):
-        if label is None:
-            label = 'sftp'
-        log.info("%s: %s" % (label, msg))
-    def logerr(msg, label=None):
-        if label is None:
-            label = 'sftp'
-        log.error("%s: %s" % (label, msg))
-except ImportError:
-    import syslog
-
-    def logmsg(level, msg, label):
-        if label is None:
-            label = 'sftp'
-        syslog.syslog(level, '%s: %s' % (label, msg))
-    def logdbg(msg, label=None):
-        logmsg(syslog.LOG_DEBUG, msg, label)
-    def loginf(msg, label=None):
-        logmsg(syslog.LOG_INFO, msg, label)
-    def logerr(msg, label=None):
-        logmsg(syslog.LOG_ERR, msg, label)
+log = logging.getLogger(__name__)
 
 
-VERSION = "0.7"
+def logdbg(msg, label='sftp'):
+    log.debug("%s: %s" % (label, msg))
+
+
+def loginf(msg, label='sftp'):
+    log.info("%s: %s" % (label, msg))
+
+
+def logerr(msg, label='sftp'):
+    log.error("%s: %s" % (label, msg))
+
+
+VERSION = "0.8"
 
 
 class SFTPUploader(object):
@@ -67,7 +48,7 @@ class SFTPUploader(object):
     def __init__(self, server, user, password, local_root, remote_root,
                  private_key=None, private_key_pass=None,
                  port=22, name='SFTP', max_tries=3, debug=0):
-        import pysftp
+        import paramiko  # noqa: F401  -- fail fast if the dependency is missing
         self.server = server
         self.user = user
         self.password = password
@@ -84,33 +65,58 @@ class SFTPUploader(object):
         logdbg("server=%s port=%s user=%s" % (server, port, user))
 
     def run(self):
-        import pysftp
+        import paramiko
         n_uploaded = 0
         (timestamp, fileset) = self.get_last_upload()
+        client = None
         con = None
         try:
             logdbg("connecting to %s@%s" % (self.user, self.server))
-            cnopts = pysftp.CnOpts()
-            cnopts.hostkeys = None
             for cnt in range(self.max_tries):
                 try:
-                    con = pysftp.Connection(host=self.server,
-                                            username=self.user,
-                                            password=self.password,
-                                            port=self.port,
-                                            private_key=self.private_key,
-                                            private_key_pass=self.private_key_pass,
-                                            cnopts=cnopts)
+                    client = paramiko.SSHClient()
+                    client.load_system_host_keys()
+
+                    # Preserve the original extension's behavior. The pysftp
+                    # implementation explicitly disabled host-key checking.
+                    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+                    connect_args = {
+                        'hostname': self.server,
+                        'username': self.user,
+                        'port': self.port,
+                    }
+                    if self.password is not None:
+                        connect_args['password'] = self.password
+                    if self.private_key is not None:
+                        connect_args['key_filename'] = self.private_key
+                    if self.private_key_pass is not None:
+                        connect_args['passphrase'] = self.private_key_pass
+
+                    client.connect(**connect_args)
+                    con = client.open_sftp()
                     break
-                except pysftp.ConnectionException as e:
+                except (paramiko.SSHException, OSError) as e:
                     logerr("connect %s of %s failed: %s" %
                            (cnt + 1, self.max_tries, e))
+                    if con is not None:
+                        try:
+                            con.close()
+                        except Exception:
+                            pass
+                        con = None
+                    if client is not None:
+                        try:
+                            client.close()
+                        except Exception:
+                            pass
+                        client = None
             else:
                 logerr("failed %s attempts for %s@%s" %
                        (self.max_tries, self.user, self.server))
                 return n_uploaded
 
-            for (dirpath, unused_dirs, filenames) in os.walk(self.local_root):
+            for dirpath, _dirs, filenames in os.walk(self.local_root):
                 # strip out the common local root directory
                 local_rel_dir_path = dirpath.replace(self.local_root, '.')
                 if self._skip_dir(local_rel_dir_path):
@@ -130,7 +136,7 @@ class SFTPUploader(object):
                     for cnt in range(self.max_tries):
                         try:
                             con.put(full_local_path, full_remote_path)
-                        except (OSError, IOError) as e:
+                        except OSError as e:
                             loginf("attempt %s of %s failed: %s" %
                                    (cnt + 1, self.max_tries, e))
                         else:
@@ -143,7 +149,12 @@ class SFTPUploader(object):
         finally:
             if con is not None:
                 try:
-                    con.quit()
+                    con.close()
+                except Exception:
+                    pass
+            if client is not None:
+                try:
+                    client.close()
                 except Exception:
                     pass
         timestamp = time.time()
@@ -155,9 +166,9 @@ class SFTPUploader(object):
         tsfile = os.path.join(self.local_root, "#%s.last" % self.name)
         try:
             with open(tsfile, "rb") as f:
-                timestamp = cPickle.load(f)
-                fileset = cPickle.load(f)
-        except (IOError, EOFError, cPickle.PickleError):
+                timestamp = pickle.load(f)
+                fileset = pickle.load(f)
+        except (OSError, EOFError, pickle.PickleError):
             timestamp = 0
             fileset = set()
             try:
@@ -171,17 +182,24 @@ class SFTPUploader(object):
         tsfile = os.path.join(self.local_root, "#%s.last" % self.name)
         try:
             with open(tsfile, "wb") as f:
-                cPickle.dump(timestamp, f)
-                cPickle.dump(fileset, f)
-        except IOError as e:
+                pickle.dump(timestamp, f)
+                pickle.dump(fileset, f)
+        except OSError as e:
             loginf("failed to save upload time: %s" % e)
+
+    def _remote_isdir(self, con, remote_dir_path):
+        """return True if remote_dir_path exists and is a directory"""
+        try:
+            return stat.S_ISDIR(con.stat(remote_dir_path).st_mode)
+        except OSError:
+            return False
 
     def _make_remote_dir(self, con, remote_dir_path):
         """create remote directory using the server connection"""
         logdbg("create remote directory %s" % remote_dir_path)
         for _ in range(self.max_tries):
             try:
-                if not con.isdir(remote_dir_path):
+                if not self._remote_isdir(con, remote_dir_path):
                     con.mkdir(remote_dir_path)
                 break
             except OSError as e:
@@ -257,7 +275,7 @@ class SFTPGenerator(weewx.reportengine.ReportGenerator):
 
         try:
             n = uploader.run()
-        except () as e:
+        except Exception as e:
             logerr("%s" % e, "sftpgenerator")
             return
 
@@ -270,9 +288,10 @@ class SFTPGenerator(weewx.reportengine.ReportGenerator):
 # entry point for testing this code
 # PYTHONPATH=bin python bin/user/sftp.py weewx.conf
 if __name__ == '__main__':
-    import configobj
     import optparse
     import socket
+
+    import configobj
     parser = optparse.OptionParser()
     parser.add_option("--config", dest="config_path", metavar="CONFIG_FILE",
                       default="/home/weewx/weewx.conf",
@@ -291,7 +310,7 @@ if __name__ == '__main__':
     cfg = dict()
     try:
         cfg = configobj.ConfigObj(options.config_path)
-    except IOError:
+    except OSError:
         pass
 
     stdrep = cfg.get('StdReport', {})
