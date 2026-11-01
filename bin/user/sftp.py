@@ -50,7 +50,7 @@ def logerr(msg, label='sftp'):
     log.error("%s: %s" % (label, msg))
 
 
-VERSION = "0.9.0"
+VERSION = "0.9.4"
 
 # Terrapin (CVE-2023-48795) needs encrypt-then-MAC or ChaCha20-Poly1305.
 # paramiko added ETM MACs in 2.5.0 (it never implemented ChaCha20-Poly1305)
