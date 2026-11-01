@@ -37,6 +37,24 @@ implemented by davies-barnard.
   backported fix under an older version number; in that case the warning can be
   ignored.
 
+## Upgrading from 0.9.0 to 0.9.4
+
+Nothing is required for a typical setup, but check these:
+
+- **Expect one full upload.** The cache is now JSON and 0.9.0's pickle cache
+  is ignored, so the first run after upgrading re-uploads the whole report.
+  No action needed; the new cache replaces the old one after that run.
+- **External symlinks are skipped.** If your report directory contains
+  symlinks to files outside it that you do want published, set
+  `allow_external_symlinks = true`. Check the log for "symlink target is
+  outside" lines after the first run.
+- **Check for a Terrapin warning.** If the log says your paramiko is
+  vulnerable to Terrapin (CVE-2023-48795), upgrade it
+  (`pip install --upgrade paramiko` in WeeWX's environment), unless your
+  distribution backported the fix.
+- **Optional:** use `password_env` / `private_key_pass_env` to keep secrets
+  out of `weewx.conf`.
+
 ## Upgrading to 0.9.0 — compatibility warning
 
 Version **0.9.0 changes failure handling and upload-cache behavior**. Review

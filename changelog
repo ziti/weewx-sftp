@@ -1,3 +1,10 @@
+0.9.4 1nov2026
+* store the upload cache as JSON instead of pickle; pickle caches are never loaded, so the first run after upgrading uploads the full report
+* do not follow symlinks out of the report directory unless allow_external_symlinks is set
+* read the password and key passphrase from environment variables via password_env and private_key_pass_env
+* warn when the installed paramiko is vulnerable to Terrapin (CVE-2023-48795)
+* special thanks to smeisens for all of these contributions
+
 0.9.0 14oct2026
 * bound SSH connection, SFTP negotiation and SFTP requests with configurable timeouts
 * fail incomplete transfers without advancing upload state or logging false success
